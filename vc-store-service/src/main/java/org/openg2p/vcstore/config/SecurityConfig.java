@@ -156,7 +156,19 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain chain(
             HttpSecurity http,
-            VaultProperties props) throws Exception {
+            VaultProperties props,
+            Environment env,
+            @Value("${vault.internal-auth-enabled:true}") boolean internalAuthEnabled) throws Exception {
+
+        if (!internalAuthEnabled) {
+            if (env.acceptsProfiles(Profiles.of("prod", "production"))) {
+                throw new IllegalStateException(
+                        "vault.internal-auth-enabled=false is not allowed when the prod profile is active");
+            }
+            log.warn("*** LOCAL TESTING ONLY: /internal/** is OPEN without X-Internal-Key "
+                    + "(vault.internal-auth-enabled=false). Anyone who can reach this service can trigger OTPs. "
+                    + "Never use this outside your own machine. ***");
+        }
 
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -214,14 +226,14 @@ public class SecurityConfig {
                 // JWT authentication for protected endpoints
                 .oauth2ResourceServer(oauth2 ->
                         oauth2.jwt(Customizer.withDefaults())
-                )
-
-                // Internal API-key validation
-                .addFilterBefore(
-                        new InternalKeyFilter(
-                                props.internalApiKey()),
-                        UsernamePasswordAuthenticationFilter.class
                 );
+
+        // Internal API-key validation (skipped only when explicitly disabled for local testing)
+        if (internalAuthEnabled) {
+            http.addFilterBefore(
+                    new InternalKeyFilter(props.internalApiKey()),
+                    UsernamePasswordAuthenticationFilter.class);
+        }
 
         return http.build();
     }
