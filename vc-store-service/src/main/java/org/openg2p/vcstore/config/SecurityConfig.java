@@ -3,6 +3,7 @@ package org.openg2p.vcstore.config;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import javax.crypto.spec.SecretKeySpec;
+
 import org.openg2p.vcstore.crypto.VaultCrypto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,87 +31,202 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 
 @Configuration
 public class SecurityConfig {
-    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    private static final Logger log =
+            LoggerFactory.getLogger(SecurityConfig.class);
 
     @Bean
     VaultCrypto vaultCrypto(VaultProperties props) {
         VaultCrypto crypto = new VaultCrypto(props.encryptionKey());
+
         if (!crypto.enabled()) {
-            log.warn("vault.encryption-key is empty: stored values are read as clear text (dev only)");
+            log.warn(
+                    "vault.encryption-key is empty: stored values are read as clear text (dev only)"
+            );
         }
+
         return crypto;
     }
 
     /**
-     * Normal operation: validates eSignet access tokens (signature via JWKS, issuer, audience).
+     * Normal operation: validates eSignet access tokens using JWKS,
+     * issuer, and audience.
      *
-     * LOCAL TESTING ONLY: if VAULT_DEV_HMAC_SECRET is set, tokens signed with that shared secret (HS256) are
-     * accepted instead. Anyone who knows the secret can mint a token for any claim code and download that
-     * credential without an OTP, so it must never be set on a shared or production environment. The service
-     * refuses to start with it when a "prod"/"production" Spring profile is active.
+     * LOCAL TESTING ONLY:
+     * If VAULT_DEV_HMAC_SECRET is set, HS256 tokens signed with that
+     * shared secret are accepted instead.
+     *
+     * Never use this override in a shared or production environment.
      */
     @Bean
-    JwtDecoder jwtDecoder(VaultProperties props, Environment env,
-                          @Value("${vault.dev-hmac-secret:}") String devHmacSecret) {
+    JwtDecoder jwtDecoder(
+            VaultProperties props,
+            Environment env,
+            @Value("${vault.dev-hmac-secret:}") String devHmacSecret) {
+
         if (devHmacSecret != null && !devHmacSecret.isBlank()) {
-            if (env.acceptsProfiles(Profiles.of("prod", "production"))) {
-                throw new IllegalStateException("VAULT_DEV_HMAC_SECRET must not be set when the prod profile is active");
+
+            if (env.acceptsProfiles(
+                    Profiles.of("prod", "production"))) {
+                throw new IllegalStateException(
+                        "VAULT_DEV_HMAC_SECRET must not be set when "
+                                + "the prod profile is active"
+                );
             }
-            byte[] key = devHmacSecret.getBytes(StandardCharsets.UTF_8);
+
+            byte[] key =
+                    devHmacSecret.getBytes(StandardCharsets.UTF_8);
+
             if (key.length < 32) {
-                throw new IllegalStateException("VAULT_DEV_HMAC_SECRET must be at least 32 bytes for HS256");
+                throw new IllegalStateException(
+                        "VAULT_DEV_HMAC_SECRET must be at least "
+                                + "32 bytes for HS256"
+                );
             }
-            log.warn("*** DEV MODE: accepting HS256 tokens signed with VAULT_DEV_HMAC_SECRET instead of eSignet tokens. "
-                    + "Anyone with that secret can download any credential without an OTP. Never use this outside your own machine. ***");
-            return NimbusJwtDecoder.withSecretKey(new SecretKeySpec(key, "HmacSHA256"))
+
+            log.warn(
+                    "*** DEV MODE: accepting HS256 tokens signed with "
+                            + "VAULT_DEV_HMAC_SECRET instead of eSignet tokens. "
+                            + "Anyone with that secret can mint tokens. "
+                            + "Never use this outside your own machine. ***"
+            );
+
+            return NimbusJwtDecoder
+                    .withSecretKey(
+                            new SecretKeySpec(key, "HmacSHA256"))
                     .macAlgorithm(MacAlgorithm.HS256)
                     .build();
         }
+
         return eSignetDecoder(props.oidc());
     }
 
-    private static JwtDecoder eSignetDecoder(VaultProperties.Oidc oidc) {
-        if (isBlank(oidc.issuerUri()) || isBlank(oidc.jwkSetUri()) || oidc.allowedAudiences() == null
+    private static JwtDecoder eSignetDecoder(
+            VaultProperties.Oidc oidc) {
+
+        if (isBlank(oidc.issuerUri())
+                || isBlank(oidc.jwkSetUri())
+                || oidc.allowedAudiences() == null
                 || oidc.allowedAudiences().isEmpty()) {
+
             throw new IllegalStateException(
-                    "vault.oidc.issuer-uri, jwk-set-uri and allowed-audiences must be configured "
-                            + "(or set VAULT_DEV_HMAC_SECRET for local testing)");
+                    "vault.oidc.issuer-uri, jwk-set-uri and "
+                            + "allowed-audiences must be configured "
+                            + "(or set VAULT_DEV_HMAC_SECRET for local testing)"
+            );
         }
-        NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(oidc.jwkSetUri())
-                .jwsAlgorithms(a -> {
-                    a.add(SignatureAlgorithm.RS256);
-                    a.add(SignatureAlgorithm.PS256);
-                })
-                .build();
+
+        NimbusJwtDecoder decoder =
+                NimbusJwtDecoder
+                        .withJwkSetUri(oidc.jwkSetUri())
+                        .jwsAlgorithms(algorithms -> {
+                            algorithms.add(SignatureAlgorithm.RS256);
+                            algorithms.add(SignatureAlgorithm.PS256);
+                        })
+                        .build();
+
         List<String> allowed = oidc.allowedAudiences();
+
         OAuth2TokenValidator<Jwt> audience = token -> {
             List<String> aud = token.getAudience();
-            return aud != null && aud.stream().anyMatch(allowed::contains)
+
+            return aud != null
+                    && aud.stream().anyMatch(allowed::contains)
                     ? OAuth2TokenValidatorResult.success()
-                    : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Audience not allowed", null));
+                    : OAuth2TokenValidatorResult.failure(
+                    new OAuth2Error(
+                            "invalid_token",
+                            "Audience not allowed",
+                            null
+                    )
+            );
         };
-        decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
-                JwtValidators.createDefaultWithIssuer(oidc.issuerUri()), audience));
+
+        decoder.setJwtValidator(
+                new DelegatingOAuth2TokenValidator<>(
+                        JwtValidators.createDefaultWithIssuer(
+                                oidc.issuerUri()),
+                        audience
+                )
+        );
+
         return decoder;
     }
 
     @Bean
-    SecurityFilterChain chain(HttpSecurity http, VaultProperties props) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
-                .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(a -> a
-                        .requestMatchers("/actuator/health/**", "/actuator/health", "/.well-known/**").permitAll()
-                        // Spring Boot forwards failures to /error; without this an error body is replaced by a 401.
-                        .requestMatchers("/error").permitAll()
-                        .requestMatchers("/internal/**").permitAll() // guarded by InternalKeyFilter below
-                        .requestMatchers("/credential").authenticated()
-                        .anyRequest().denyAll())
-                .oauth2ResourceServer(o -> o.jwt(Customizer.withDefaults()))
-                .addFilterBefore(new InternalKeyFilter(props.internalApiKey()), UsernamePasswordAuthenticationFilter.class);
+    SecurityFilterChain chain(
+            HttpSecurity http,
+            VaultProperties props) throws Exception {
+
+        http
+                .csrf(AbstractHttpConfigurer::disable)
+
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
+                        )
+                )
+
+                .authorizeHttpRequests(auth -> auth
+
+                        // Public health endpoints
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/health/**"
+                        ).permitAll()
+
+                        // Public well-known endpoints
+                        .requestMatchers(
+                                "/.well-known/**"
+                        ).permitAll()
+
+                        // Allow Spring Boot error handling
+                        .requestMatchers(
+                                "/error"
+                        ).permitAll()
+
+                        // Allow Swagger UI
+                        .requestMatchers(
+                                "/swagger-ui.html",
+                                "/swagger-ui/**"
+                        ).permitAll()
+
+                        // Allow OpenAPI specification
+                        .requestMatchers(
+                                "/v3/api-docs",
+                                "/v3/api-docs/**"
+                        ).permitAll()
+
+                        // Internal endpoints are guarded by InternalKeyFilter
+                        .requestMatchers(
+                                "/internal/**"
+                        ).permitAll()
+
+                        // Credential endpoint still requires a valid JWT
+                        .requestMatchers(
+                                "/credential"
+                        ).authenticated()
+
+                        // Deny every other endpoint by default
+                        .anyRequest().denyAll()
+                )
+
+                // JWT authentication for protected endpoints
+                .oauth2ResourceServer(oauth2 ->
+                        oauth2.jwt(Customizer.withDefaults())
+                )
+
+                // Internal API-key validation
+                .addFilterBefore(
+                        new InternalKeyFilter(
+                                props.internalApiKey()),
+                        UsernamePasswordAuthenticationFilter.class
+                );
+
         return http.build();
     }
 
-    private static boolean isBlank(String s) {
-        return s == null || s.isBlank();
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

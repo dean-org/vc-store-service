@@ -1,0 +1,24 @@
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+name: {{ include "vc-store-service.fullname" . }}
+labels:
+  {{- include "vc-store-service.labels" . | nindent 4 }}
+spec:
+gateways:
+  - istio-system/internal
+hosts:
+  - '*'
+http:
+  - headers:
+request:
+set:
+x-forwarded-proto: https
+match:
+  - uri:
+prefix: /v1/vc-store-service
+route:
+  - destination:
+host: {{ include "vc-store-service.fullname" . }}
+port:
+number: {{ .Values.service.port }}
