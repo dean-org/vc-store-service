@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.openg2p</groupId>
+  <artifactId>openg2p-vc-store</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+  <name>openg2p-vc-store</name>
+  <description>Credential vault serving: the vc-store service (Java 21) and the eSignet plugin (Java 11)</description>
+
+  <!-- The two modules run in different JVMs and keep their own parents/Java levels. -->
+  <modules>
+    <module>vc-store-service</module>
+    <module>vcstore-esignet-plugin</module>
+  </modules>
+</project>

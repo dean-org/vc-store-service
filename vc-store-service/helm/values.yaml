@@ -1,0 +1,47 @@
+replicaCount: 1
+
+image:
+  repository: openg2p/vc-store-service
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: vc-store.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+config:
+  serverPort: "8080"
+  vaultUri: "http://vault.default.svc.cluster.local:8200"
+
+secrets:
+  vaultToken: "your-secure-vault-token"
+  springDatasourcePassword: "your-database-password"
